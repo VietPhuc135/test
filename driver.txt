@@ -1,0 +1,70 @@
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/usb.h>
+#include <linux/version.h>
+
+// Định nghĩa ID của root hub 1.1
+#define USB_LF_11_ROOT_HUB_VENDOR_ID 0x0000
+#define USB_LF_11_ROOT_HUB_PRODUCT_ID 0x0001
+
+static struct usb_device_id usb_lf_11_root_hub_id_table[] = {
+    {USB_DEVICE(USB_LF_11_ROOT_HUB_VENDOR_ID, USB_LF_11_ROOT_HUB_PRODUCT_ID)},
+    {}
+};
+MODULE_DEVICE_TABLE(usb, usb_lf_11_root_hub_id_table);
+
+// Hàm thực hiện khi ổ đĩa được kết nối
+static int usb_lf_11_root_hub_probe(struct usb_interface *interface, const struct usb_device_id *id)
+{
+    printk(KERN_ALERT "The USB LF 1.1 Root Hub has been connected!\n");
+    return 0;
+}   
+
+// Hàm thực hiện khi ổ đĩa bị ngắt kết nối
+static void usb_lf_11_root_hub_disconnect(struct usb_interface *interface)
+{
+    printk(KERN_ALERT "The USB LF 1.1 Root Hub has been disconnected!\n");
+}
+
+// Khởi tạo driver
+static struct usb_driver usb_lf_11_root_hub_driver = {
+    .name = "USB LF 1.1 Root Hub Driver",
+    .probe = usb_lf_11_root_hub_probe,
+    .disconnect = usb_lf_11_root_hub_disconnect,
+    .id_table = usb_lf_11_root_hub_id_table,
+};
+
+// Hàm khởi động driver
+static int __init usb_lf_11_root_hub_init(void)
+{
+    int result;
+
+    // Đăng ký driver với hệ thống
+    result = usb_register(&usb_lf_11_root_hub_driver);
+
+    if (result) {
+        printk(KERN_ALERT "Unable to register USB LF 1.1 Root Hub Driver: %d\n", result);
+        goto exit;
+    }
+
+    printk(KERN_ALERT "USB LF 1.1 Root Hub Driver Initialized.\n");
+
+exit:
+    return result;
+}
+
+// Hàm kết thúc driver
+static void __exit usb_lf_11_root_hub_exit(void)
+{
+    // Hủy đăng ký driver khỏi hệ thống
+    usb_deregister(&usb_lf_11_root_hub_driver);
+
+    printk(KERN_ALERT "USB LF 1.1 Root Hub Driver Exited.\n");
+}
+
+module_init(usb_lf_11_root_hub_init);
+module_exit(usb_lf_11_root_hub_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("USB LF 1.1 Root Hub Driver");
