@@ -1,0 +1,1 @@
+cmd_/home/anh/LINUX/LABVII/lab.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000  --build-id  -T ./scripts/module-common.lds -o /home/anh/LINUX/LABVII/lab.ko /home/anh/LINUX/LABVII/lab.o /home/anh/LINUX/LABVII/lab.mod.o;  true
