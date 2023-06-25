@@ -1,0 +1,36 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+
+#define LF11RH_DEVICE_FILE_PATH "/dev/lf11rh"
+
+int main(int argc, char **argv)
+{
+    int fd;
+    char buffer[256];
+    int nread;
+
+    fd = open(LF11RH_DEVICE_FILE_PATH, O_RDONLY);
+    if (fd < 0)
+    {
+        perror("Failed to open device file: ");
+        return -1;
+    }
+
+    printf("Reading from device...\n");
+    nread = read(fd, buffer, sizeof(buffer));
+    if (nread < 0)
+    {
+        perror("Failed to read from device: ");
+        close(fd);
+        return -1;
+    }
+
+    printf("Read %d bytes from device: %s\n", nread, buffer);
+
+    close(fd);
+
+    return 0;
+}

@@ -1,0 +1,193 @@
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/usb.h>
+#include <linux/version.h>
+
+#define USB_LF_11_ROOT_HUB_VENDOR_ID    0x0000
+#define USB_LF_11_ROOT_HUB_PRODUCT_ID   0x0001
+
+static struct usb_device_id usb_lf_11_root_hub_id_table[] = {
+    { USB_DEVICE(USB_LF_11_ROOT_HUB_VENDOR_ID, USB_LF_11_ROOT_HUB_PRODUCT_ID) },
+    { },
+};
+
+MODULE_DEVICE_TABLE(usb, usb_lf_11_root_hub_id_table);
+
+static struct usb_device *lf11rh_dev;
+static struct usb_interface *lf11rh_iface;
+
+#define LF11RH_REQ_SIZE (sizeof(struct lf11rh_request))
+struct lf11rh_request {
+    uint8_t request;
+    uint8_t value_l;
+    uint8_t value_h;
+    uint8_t index_l;
+    uint16_t index_h;
+    uint16_t length;
+    uint8_t *data;
+};
+
+static int lf11rh_open(struct inode *inode, struct file *file)
+{
+    struct usb_interface *iface;
+    struct usb_device *dev;
+    int subminor;
+
+    subminor = iminor(inode);
+
+    iface = usb_find_interface(&lf11rh_driver, subminor);
+    if (!iface)
+        return -ENODEV;
+
+    dev = interface_to_usbdev(iface);
+    if (!dev)
+        return -ENODEV;
+
+    file->private_data = iface; /* Save ptr to interface struct in file struct */
+
+    return 0;
+}
+
+static int lf11rh_release(struct inode *inode, struct file *file)
+{
+    return 0;
+}
+
+static ssize_t lf11rh_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+{
+    int retval;
+    struct idt1000_request idt1000_request;
+
+    if (mutex_lock_interruptible(&lf11rh_dev->m_mutex))
+        return -ERESTARTSYS;
+
+    /*
+     * Setup the USB request for a bulk read from the device.
+     */
+
+    lf11rh_request.requesttype = USB_TYPE_VENDOR | USB_DIR_IN;
+    lf11rh_request.request = 0x4;
+    lf11rh_request.value_l = 0;
+    lf11rh_request.value_h = 0;
+    lf11rh_request.index_l = 0;
+    lf11rh_request.index_h = 0;
+    lf11rh_request.length = count;
+    lf11rh_request.data = kmalloc(count, GFP_KERNEL);
+
+    retval = usb_bulk_msg(lf11rh_dev,
+                          usb_rcvbulkpipe(lf11rh_dev, 0x82),
+                          lf11rh_request.data,
+                          lf11rh_request.length,
+                          &length,
+                          5000);
+    if (retval) {
+        dev_err(&lf11rh_dev->dev, "bulk message returned %d\n", retval);
+        kfree(lf11rh_request.data);
+        mutex_unlock(&lf11rh_dev->m_mutex);
+        return retval;
+    }
+
+    /*
+     * Send the data to the user.
+     */
+
+    if (copy_to_user(buf, lf11rh_request.data, count)) {
+        kfree(lf11rh_request.data);
+        mutex_unlock(&lf11rh_dev->m_mutex);
+        return -EFAULT;
+    }
+
+    kfree(lf11rh_request.data);
+    mutex_unlock(&lf11rh_dev->m_mutex);
+
+    *ppos += count;
+    return count;
+}
+
+static ssize_t lf11rh_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+    int retval;
+    struct idt1000_request idt1000_request;
+
+    if (mutex_lock_interruptible(&lf11rh_dev->m_mutex))
+        return -ERESTARTSYS;
+
+    /*
+     * Send the bulk request to the device.
+     */
+
+    lf11rh_request.requesttype = USB_TYPE_VENDOR | USB_DIR_OUT;
+    lf11rh_request.request = 0x3;
+    lf11rh_request.value_l = 0;
+    lf11rh_request.value_h = 0;
+    lf11rh_request.index_l = 0;
+    lf11rh_request.index_h = 0;
+    lf11rh_request.length = count;
+    lf11rh_request.data = kmalloc(count, GFP_KERNEL);
+
+    if (copy_from_user(lf11rh_request.data, buf, count)) {
+        kfree(lf11rh_request.data);
+        mutex_unlock(&lf11rh_dev->m_mutex);
+        return -EFAULT;
+    }
+
+    retval = usb_bulk_msg(lf11rh_dev,
+                          usb_sndbulkpipe(lf11rh_dev, 0x01),
+                          lf11rh_request.data,
+                          lf11rh_request.length,
+                          &length,
+                          5000);
+    if (retval) {
+        dev_err(&lf11rh_dev->dev, "bulk message returned %d\n", retval);
+        kfree(lf11rh_request.data);
+        mutex_unlock(&lf11rh_dev->m_mutex);
+        return retval;
+    }
+
+    kfree(lf11rh_request.data);
+    mutex_unlock(&lf11rh_dev->m_mutex);
+
+    *ppos += count;
+    return count;
+}
+
+static const struct file_operations lf11rh_fops = {
+    .owner =        THIS_MODULE,
+    .open =         lf11rh_open,
+    .release =      lf11rh_release,
+    .read =         lf11rh_read,
+    .write =        lf11rh_write,
+    .llseek =       no_llseek,
+};
+
+static struct usb_driver lf11rh_driver = {
+    .name =         "lf11rh",
+    .probe =        lf11rh_probe,
+    .disconnect =       lf11rh_disconnect,
+    .id_table =     lf11rh_id_table,
+    .supports_autosuspend = 1,
+};
+
+
+static int __init lf11rh_init(void)
+{
+    int ret;
+
+    ret = usb_register(&lf11rh_driver);
+    if (ret)
+        err("usb_register failed. %d", ret);
+
+    return ret;
+}
+
+static void __exit lf11rh_exit(void)
+{
+    usb_deregister(&lf11rh_driver);
+}
+
+module_init(lf11rh_init)
+module_exit(lf11rh_exit)
+
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("USB LF 1.1 Root Hub Driver");
+MODULE_LICENSE("GPL");
