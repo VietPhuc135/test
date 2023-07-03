@@ -1,0 +1,150 @@
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/usb.h>
+ 
+static int usb_probe(struct usb_interface *interface, const struct usb_device_id *id)
+{
+    struct usb_device *dev = interface_to_usbdev(interface);
+    
+    // Code to handle USB device probe
+    printk(KERN_INFO "USB device %04X:%04X connected\n", dev->descriptor.idVendor, dev->descriptor.idProduct);
+    
+    // Code to open the device for read/write operations
+    int retval = usb_register_dev(interface, &my_usb_class);
+    if (retval < 0) {
+        printk(KERN_ERR "Failed to register USB device: error %d\n", retval);
+        return retval;
+    }
+    
+    return 0;
+}
+ 
+static void usb_disconnect(struct usb_interface *interface)
+{
+    struct usb_device *dev = interface_to_usbdev(interface);
+    
+    // Code to handle USB device disconnect
+    printk(KERN_INFO "USB device %04X:%04X disconnected\n", dev->descriptor.idVendor, dev->descriptor.idProduct);
+    
+    // Code to close the device
+    usb_deregister_dev(interface, &my_usb_class);
+}
+ 
+static int usb_open(struct inode *inode, struct file *file)
+{
+    struct usb_interface *interface;
+    int subminor;
+    
+    // Code to find the USB interface and subminor number
+    subminor = iminor(inode);
+    interface = usb_find_interface(&my_usb_class, subminor);
+    if (!interface) {
+        printk(KERN_ERR "Cannot find USB interface for minor %d\n", subminor);
+        return -ENODEV;
+    }
+    
+    // Code to set up private data for file operations
+    file->private_data = interface;
+    
+    // Code to claim the interface
+    if (usb_interface_claimed(interface)) {
+        printk(KERN_ERR "USB interface %d already in use\n", interface->minor);
+        return -EBUSY;
+    }
+    
+    return 0;
+}
+ 
+static int usb_release(struct inode *inode, struct file *file)
+{
+    struct usb_interface *interface;
+    
+    // Code to retrieve the interface from private data
+    interface = file->private_data;
+    
+    // Code to release the interface
+    usb_interface_release(interface);
+    
+    return 0;
+}
+ 
+static ssize_t usb_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
+{
+    struct usb_interface *interface;
+    
+    // Code to retrieve the interface from private data
+    interface = file->private_data;
+    
+    // Code to read data from the USB device
+    // ...
+    
+    return bytesRead;
+}
+ 
+static ssize_t usb_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+{
+    struct usb_interface *interface;
+    
+    // Code to retrieve the interface from private data
+    interface = file->private_data;
+    
+    // Code to write data to the USB device
+    // ...
+    
+    return bytesWritten;
+}
+ 
+static struct usb_device_id usb_ids[] =
+{
+    { USB_DEVICE(LINUX_FOUNDATION_VENDOR_ID, LINUX_FOUNDATION_PRODUCT_ID) },
+    { } /* Terminating entry */
+};
+MODULE_DEVICE_TABLE(usb, usb_ids);
+
+// Structure for file operations
+static struct file_operations usb_fops = {
+    .owner = THIS_MODULE,
+    .open = usb_open,
+    .release = usb_release,
+    .read = usb_read,
+    .write = usb_write,
+};
+ 
+static struct usb_class_driver my_usb_class = {
+    .name = "my_usb_device%d",
+    .fops = &usb_fops,
+};
+ 
+static struct usb_driver usb_drv =
+{
+    .name = "my_usb_driver",
+    .id_table = usb_ids,
+    .probe = usb_probe,
+    .disconnect = usb_disconnect,
+};
+ 
+static int __init usb_init(void)
+{
+    int result;
+    result = usb_register(&usb_drv);
+    if(result < 0)
+    {
+        printk(KERN_INFO "Failed to initialize USB driver\n");
+        return result;
+    }
+    printk(KERN_INFO "USB driver initialized\n");
+    return 0;
+}
+ 
+static void __exit usb_exit(void)
+{
+    usb_deregister(&usb_drv);
+    printk(KERN_INFO "USB driver deinitialized\n");
+}
+ 
+module_init(usb_init);
+module_exit(usb_exit);
+ 
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("USB driver for Linux Foundation 1.1 root hub");
